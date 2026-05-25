@@ -195,11 +195,11 @@ export default function App() {
   }, [socket, playerName]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
-  const joinLobby = useCallback((name, topic = '') => {
+  const joinLobby = useCallback((name, topic = '', gameLength = 10) => {
     setPlayerName(name);
     setCustomTopic(topic);
     setScreen('lobby');
-    socket.emit('join_lobby', { player_name: name, custom_topic: topic });
+    socket.emit('join_lobby', { player_name: name, custom_topic: topic, game_length: gameLength });
   }, [socket]);
 
   const submitAnswer = useCallback((answer) => {

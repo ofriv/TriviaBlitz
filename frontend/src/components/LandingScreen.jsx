@@ -1,10 +1,13 @@
 import { useState } from 'react';
 
+const GAME_LENGTHS = [5, 10, 15, 20];
+
 export default function LandingScreen({ onJoin, defaultName }) {
-  const [name, setName]   = useState(defaultName || '');
-  const [error, setError] = useState('');
-  const [mode, setMode]   = useState('standard');  // 'standard' | 'ai'
-  const [topic, setTopic] = useState('');
+  const [name, setName]           = useState(defaultName || '');
+  const [error, setError]         = useState('');
+  const [mode, setMode]           = useState('standard');  // 'standard' | 'ai'
+  const [topic, setTopic]         = useState('');
+  const [gameLength, setGameLength] = useState(10);
 
   const handleJoin = () => {
     const trimmed = name.trim();
@@ -14,7 +17,7 @@ export default function LandingScreen({ onJoin, defaultName }) {
       setError('Please enter a topic for AI questions');
       return;
     }
-    onJoin(trimmed, mode === 'ai' ? topic.trim() : '');
+    onJoin(trimmed, mode === 'ai' ? topic.trim() : '', gameLength);
   };
 
   return (
@@ -57,10 +60,26 @@ export default function LandingScreen({ onJoin, defaultName }) {
               maxLength={80}
             />
             <p className="topic-hint">
-              Claude will generate 10 fresh trivia questions on any topic you choose.
+              GPT-4o-mini will generate fresh trivia questions on any topic you choose.
             </p>
           </div>
         )}
+
+        {/* ── Game length picker ────────────────────────────────────────── */}
+        <div className="length-row">
+          <span className="length-label">Questions</span>
+          <div className="length-toggle">
+            {GAME_LENGTHS.map(n => (
+              <button
+                key={n}
+                className={`length-btn ${gameLength === n ? 'active' : ''}`}
+                onClick={() => setGameLength(n)}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* ── Name + join ───────────────────────────────────────────────── */}
         <div className="join">
@@ -83,12 +102,6 @@ export default function LandingScreen({ onJoin, defaultName }) {
           <div className="feature-pill"><span className="ico">🤖</span>AI bots fill empty slots</div>
           <div className="feature-pill"><span className="ico">🔥</span>Streak multipliers</div>
           <div className="feature-pill"><span className="ico">✨</span>AI custom questions</div>
-        </div>
-
-        <div className="stats">
-          <div className="stat"><div className="n">2,847</div><div className="l">Playing now</div></div>
-          <div className="stat"><div className="n">14k</div><div className="l">Questions</div></div>
-          <div className="stat"><div className="n">87</div><div className="l">Categories</div></div>
         </div>
       </div>
     </div>

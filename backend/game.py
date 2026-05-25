@@ -141,7 +141,7 @@ class GameRoom:
     """
 
     def __init__(self, room_id: str, emit_fn: Callable, enter_room_fn: Callable,
-                 custom_topic: str | None = None):
+                 custom_topic: str | None = None, game_length: int = QUESTIONS_PER_GAME):
         self.room_id = room_id
         self.emit = emit_fn           # async emit function
         self.enter_room = enter_room_fn
@@ -156,6 +156,9 @@ class GameRoom:
         self.current_question_index = -1
         self.current_question_start: float = 0
         self.used_question_ids: list[int] = []
+
+        # Game length (may differ from the default QUESTIONS_PER_GAME)
+        self.game_length: int = max(1, min(30, game_length))
 
         # AI Custom Topic mode
         self.custom_topic: str | None = custom_topic
@@ -238,7 +241,9 @@ class GameRoom:
             }, room=self.room_id)
             try:
                 from ai_questions import generate_questions
-                self.custom_questions = await generate_questions(self.custom_topic)
+                self.custom_questions = await generate_questions(
+                    self.custom_topic, count=self.game_length
+                )
                 print(f"[AI] Generated {len(self.custom_questions)} questions "
                       f"about '{self.custom_topic}'", flush=True)
             except Exception as e:
@@ -254,7 +259,7 @@ class GameRoom:
         total_questions = (
             len(self.custom_questions)
             if self.custom_questions is not None
-            else QUESTIONS_PER_GAME
+            else self.game_length
         )
 
         all_players = (
@@ -281,7 +286,7 @@ class GameRoom:
         total_questions = (
             len(self.custom_questions)
             if self.custom_questions is not None
-            else QUESTIONS_PER_GAME
+            else self.game_length
         )
 
         if self.current_question_index >= total_questions:

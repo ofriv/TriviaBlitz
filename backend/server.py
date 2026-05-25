@@ -137,6 +137,12 @@ async def join_lobby(sid, data):
     # Optional custom topic for AI-generated questions mode
     custom_topic = (data.get("custom_topic") or "").strip()[:100] or None
 
+    # Number of questions per game — clamp to valid range 1-30
+    try:
+        game_length = max(1, min(30, int(data.get("game_length") or 10)))
+    except (TypeError, ValueError):
+        game_length = 10
+
     async with lobby_lock:
         # Create a new game room if none exists or previous game is finished
         if current_game is None or current_game.state == "finished":
@@ -145,6 +151,7 @@ async def join_lobby(sid, data):
                 emit_fn=emit_to_room,
                 enter_room_fn=enter_room_fn,
                 custom_topic=custom_topic,
+                game_length=game_length,
             )
 
         if current_game.state not in ("waiting", "countdown"):
