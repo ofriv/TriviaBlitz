@@ -1,0 +1,8 @@
+python-socketio[asyncio_client]
+aiohttp
+aiosqlite
+python-dotenv
+pydantic-ai
+openai
+google-generativeai
+uvicorn
