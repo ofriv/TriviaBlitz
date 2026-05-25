@@ -23,9 +23,11 @@ export default function App() {
   const [countdown, setCountdown]   = useState(30);
   const [question, setQuestion]     = useState(null);
   const [questionNum, setQNum]      = useState(0);
+  const [totalQuestions, setTotalQ] = useState(10);
   const [revealData, setRevealData] = useState(null);
   const [gameResult, setGameResult] = useState(null);
   const [myScore, setMyScore]       = useState(0);
+  const [myStreak, setMyStreak]     = useState(0);           // current correct streak
   const [chatMessages, setChatMessages] = useState([]);
   const [powerups, setPowerups]     = useState({
     fifty_fifty:  true,
@@ -34,6 +36,10 @@ export default function App() {
   });
   const [friendHint, setFriendHint] = useState(null);
   const [doubleActive, setDoubleActive] = useState(false);
+
+  // AI Custom Topic mode
+  const [customTopic, setCustomTopic]   = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // ── Socket event listeners ──────────────────────────────────────────────────
   useEffect(() => {
@@ -57,12 +63,21 @@ export default function App() {
       setCountdown(data.seconds_remaining ?? 30);
     });
 
-    // Game is starting — {players: [{name, is_bot}], ...}
+    // AI question generation started — stay on lobby, show spinner
+    socket.on('generating_questions', () => {
+      setIsGenerating(true);
+    });
+
+    // AI questions ready (or fallback to DB) — spinner off
+    socket.on('questions_ready', () => {
+      setIsGenerating(false);
+    });
+
+    // Game is starting — {players: [{name, is_bot}], num_questions, custom_topic}
     // NOTE: do NOT call setScreen here — question is not yet available.
     // The 'question' event (arrives ~1s later) calls setScreen('question').
     socket.on('game_start', (data) => {
       console.log('[game_start] received', data);
-      // Initialise all players with score=0, answered=false
       const gamePlayers = (data.players ?? []).map(p => ({
         ...p,
         score: 0,
@@ -70,21 +85,26 @@ export default function App() {
       }));
       setPlayers(gamePlayers);
       setMyScore(0);
+      setMyStreak(0);
+      setTotalQ(data.num_questions ?? 10);
       setPowerups({ fifty_fifty: true, call_friend: true, double_score: true });
       setChatMessages([]);
       setFriendHint(null);
       setDoubleActive(false);
+      setIsGenerating(false);   // safety reset
       // Stay on lobby screen until the first 'question' event arrives
     });
 
-    // New question — {question_number, question_id, question, options, difficulty, category, time_limit}
+    // New question — {question_number, question_id, question, options, difficulty, category, time_limit, total}
     socket.on('question', (data) => {
       console.log('[question] received', data);
       setQuestion(data);
       setQNum(data.question_number ?? 1);
+      setTotalQ(data.total ?? 10);
       setRevealData(null);
       setFriendHint(null);
       setDoubleActive(false);
+      setIsGenerating(false);  // safety reset
       setScreen('question');
     });
 
@@ -95,18 +115,19 @@ export default function App() {
       ));
     });
 
-    // Correct answer revealed — {correct_answer, results: [{name, score, correct, points_earned, is_bot}]}
+    // Correct answer revealed — {correct_answer, results: [{name, score, correct, points_earned, streak, streak_mult, is_bot}]}
     socket.on('answer_reveal', (data) => {
       setRevealData(data);
-      // Update scores for everyone
       if (data.results) {
         setPlayers(prev => prev.map(p => {
           const r = data.results.find(r => r.name === p.name);
           return r ? { ...p, score: r.score, answered: false } : { ...p, answered: false };
         }));
-        // Update my score
         const me = data.results.find(r => r.name === playerName);
-        if (me) setMyScore(me.score);
+        if (me) {
+          setMyScore(me.score);
+          setMyStreak(me.streak ?? 0);
+        }
       }
       setScreen('reveal');
     });
@@ -157,6 +178,8 @@ export default function App() {
       socket.off('player_joined');
       socket.off('player_left');
       socket.off('lobby_countdown');
+      socket.off('generating_questions');
+      socket.off('questions_ready');
       socket.off('game_start');
       socket.off('question');
       socket.off('player_answered');
@@ -172,10 +195,11 @@ export default function App() {
   }, [socket, playerName]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
-  const joinLobby = useCallback((name) => {
+  const joinLobby = useCallback((name, topic = '') => {
     setPlayerName(name);
+    setCustomTopic(topic);
     setScreen('lobby');
-    socket.emit('join_lobby', { player_name: name });
+    socket.emit('join_lobby', { player_name: name, custom_topic: topic });
   }, [socket]);
 
   const submitAnswer = useCallback((answer) => {
@@ -184,7 +208,6 @@ export default function App() {
 
   const usePowerup = useCallback((type) => {
     socket.emit('use_powerup', { type });
-    // Optimistically mark as used in UI
     setPowerups(prev => ({ ...prev, [type]: false }));
   }, [socket]);
 
@@ -207,8 +230,11 @@ export default function App() {
     setPlayers([]);
     setCountdown(30);
     setChatMessages([]);
+    setMyStreak(0);
+    setIsGenerating(false);
+    setCustomTopic('');
+    setTotalQ(10);
     setScreen('landing');
-    // No socket emit — user can choose a new name or just rejoin from landing
   }, []);
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -220,7 +246,14 @@ export default function App() {
         <LandingScreen onJoin={joinLobby} defaultName={playerName} />
       )}
       {screen === 'lobby' && (
-        <LobbyScreen players={players} countdown={countdown} playerName={playerName} onSkipWait={skipWait} />
+        <LobbyScreen
+          players={players}
+          countdown={countdown}
+          playerName={playerName}
+          onSkipWait={skipWait}
+          isGenerating={isGenerating}
+          customTopic={customTopic}
+        />
       )}
       {screen === 'question' && !question && (
         <div className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -233,8 +266,10 @@ export default function App() {
         <QuestionScreen
           question={question}
           questionNum={questionNum}
+          totalQuestions={totalQuestions}
           players={players}
           myScore={myScore}
+          myStreak={myStreak}
           powerups={powerups}
           friendHint={friendHint}
           doubleActive={doubleActive}
@@ -247,12 +282,14 @@ export default function App() {
           revealData={revealData}
           playerName={playerName}
           questionNum={questionNum}
+          totalQuestions={totalQuestions}
         />
       )}
       {screen === 'gameover' && gameResult && (
         <GameOverScreen
           result={gameResult}
           playerName={playerName}
+          totalQuestions={totalQuestions}
           onMainMenu={goToMainMenu}
         />
       )}

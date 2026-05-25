@@ -4,7 +4,14 @@ import Avatar from './Avatar';
 const MAX_WAIT = 30;
 const CIRCUMFERENCE = 2 * Math.PI * 44; // ≈ 276.46
 
-export default function LobbyScreen({ players, countdown: serverCountdown, playerName, onSkipWait }) {
+export default function LobbyScreen({
+  players,
+  countdown: serverCountdown,
+  playerName,
+  onSkipWait,
+  isGenerating = false,
+  customTopic  = '',
+}) {
   const humanPlayers = players.filter(p => !p.is_bot);
 
   // Local countdown that ticks on its own — syncs to server value when it arrives
@@ -29,8 +36,26 @@ export default function LobbyScreen({ players, countdown: serverCountdown, playe
         <h2>Waiting for Players</h2>
         <p className="sub">Game starts when the countdown reaches zero or enough players join</p>
 
-        {/* Countdown ring */}
-        <div className="countdown-wrap">
+        {/* AI Custom Topic badge */}
+        {customTopic && !isGenerating && (
+          <div className="ai-mode-badge">
+            🤖 AI Mode: <em>"{customTopic}"</em>
+          </div>
+        )}
+
+        {/* AI Generating spinner */}
+        {isGenerating && (
+          <div className="ai-generating">
+            <div className="ai-generating__spinner" />
+            <div className="ai-generating__text">
+              <div className="ai-generating__title">Generating AI Questions</div>
+              <div className="ai-generating__topic">about "{customTopic}"</div>
+            </div>
+          </div>
+        )}
+
+        {/* Countdown ring — dim while generating */}
+        <div className={`countdown-wrap ${isGenerating ? 'dim' : ''}`}>
           <svg className="countdown-ring" viewBox="0 0 100 100">
             <defs>
               <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -82,10 +107,12 @@ export default function LobbyScreen({ players, countdown: serverCountdown, playe
         {humanPlayers.length === 1 && (
           <div style={{ width: '100%', textAlign: 'center' }}>
             <button className="btn-primary" onClick={onSkipWait} style={{ width: '100%', justifyContent: 'center' }}>
-              ⚡ Play Now
+              {customTopic ? '🤖 Generate & Play' : '⚡ Play Now'}
             </button>
             <p style={{ marginTop: 10, fontSize: 12, color: 'var(--text-3)' }}>
-              Skip the wait — bots will fill the game
+              {customTopic
+                ? 'Claude will generate your questions — takes ~5 seconds'
+                : 'Skip the wait — bots will fill the game'}
             </p>
           </div>
         )}

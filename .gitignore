@@ -34,3 +34,4 @@ data/trivia.db
 # OS
 .DS_Store
 Thumbs.db
+.gstack/

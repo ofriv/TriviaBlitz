@@ -31,6 +31,8 @@ class BotPlayer:
         self.score = 0
         self.correct_answers = 0
         self.wrong_answers = 0
+        self.streak = 0
+        self.best_streak = 0
         # Each bot gets 3 power-ups (they never use them — keeps it simple)
         self.powerups_remaining = {"fifty_fifty": 1, "call_friend": 1, "double_score": 1}
 
@@ -62,8 +64,11 @@ class BotPlayer:
         self.score += points
         if correct:
             self.correct_answers += 1
+            self.streak += 1
+            self.best_streak = max(self.best_streak, self.streak)
         else:
             self.wrong_answers += 1
+            self.streak = 0
 
 
 def create_bots(num_bots: int) -> list[BotPlayer]:

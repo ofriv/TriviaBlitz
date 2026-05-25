@@ -3,7 +3,7 @@ import Avatar from './Avatar';
 
 const REVEAL_SECONDS = 3;
 
-export default function RevealScreen({ revealData, playerName, questionNum }) {
+export default function RevealScreen({ revealData, playerName, questionNum, totalQuestions = 10 }) {
   const { correct_answer, results = [] } = revealData;
 
   const sorted = [...results].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -51,6 +51,17 @@ export default function RevealScreen({ revealData, playerName, questionNum }) {
                   ? `+${(me.points_earned ?? 0).toLocaleString()}`
                   : '+0'}
               </div>
+              {/* Streak info */}
+              {me.correct && (me.streak_mult ?? 1) > 1 && (
+                <div className="streak-bonus">
+                  🔥 ×{me.streak_mult} streak bonus
+                </div>
+              )}
+              {me.correct && (me.streak ?? 0) >= 2 && (
+                <div className="streak-count">
+                  {me.streak} in a row!
+                </div>
+              )}
               <div className="result-total">
                 <span className="coin" />
                 {(me.score ?? 0).toLocaleString()} pts total
@@ -59,7 +70,7 @@ export default function RevealScreen({ revealData, playerName, questionNum }) {
           ) : (
             <div className="result-card card">
               <div className="result-label" style={{ marginTop: 24 }}>
-                Question {questionNum} / 10
+                Question {questionNum} / {totalQuestions}
               </div>
             </div>
           )}

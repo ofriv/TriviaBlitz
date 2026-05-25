@@ -134,6 +134,9 @@ async def join_lobby(sid, data):
 
     name = name[:20]
 
+    # Optional custom topic for AI-generated questions mode
+    custom_topic = (data.get("custom_topic") or "").strip()[:100] or None
+
     async with lobby_lock:
         # Create a new game room if none exists or previous game is finished
         if current_game is None or current_game.state == "finished":
@@ -141,6 +144,7 @@ async def join_lobby(sid, data):
                 room_id=LOBBY_ROOM,
                 emit_fn=emit_to_room,
                 enter_room_fn=enter_room_fn,
+                custom_topic=custom_topic,
             )
 
         if current_game.state not in ("waiting", "countdown"):

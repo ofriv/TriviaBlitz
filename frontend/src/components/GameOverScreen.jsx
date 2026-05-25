@@ -35,7 +35,7 @@ function Confetti() {
   );
 }
 
-export default function GameOverScreen({ result, playerName, onMainMenu }) {
+export default function GameOverScreen({ result, playerName, totalQuestions = 10, onMainMenu }) {
   const { leaderboard = [], game_id } = result;
   const myEntry = leaderboard.find(e => e.name === playerName);
   const myRank  = leaderboard.findIndex(e => e.name === playerName) + 1;
@@ -113,7 +113,7 @@ export default function GameOverScreen({ result, playerName, onMainMenu }) {
                 )}
               </div>
               <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>
-                {entry.correct ?? 0}/10
+                {entry.correct ?? 0}/{totalQuestions}
               </span>
               <div className="pts">
                 <span className="coin" />

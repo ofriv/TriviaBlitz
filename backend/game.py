@@ -25,23 +25,44 @@ MAX_POINTS = 1000
 MIN_POINTS = 100
 # Points decay linearly from MAX_POINTS at t=0 to MIN_POINTS at t=QUESTION_TIME_LIMIT
 
+# ── Streak multipliers ─────────────────────────────────────────────────────────
+# Index = current streak count going INTO the answer (0 = no streak yet).
+# Streak 4+ is capped at 2.0× — thrilling but not game-breaking.
+STREAK_MULTIPLIERS = [1.0, 1.25, 1.5, 1.75, 2.0]
+
+
+def get_streak_multiplier(streak: int) -> float:
+    """Return the point multiplier for the given streak count."""
+    idx = min(streak, len(STREAK_MULTIPLIERS) - 1)
+    return STREAK_MULTIPLIERS[idx]
+
+
 # ── Game constants ─────────────────────────────────────────────────────────────
 QUESTIONS_PER_GAME = 10
 MATCHMAKING_WAIT = 30          # seconds
 QUESTION_REVEAL_DELAY = 3      # seconds between leaderboard and next question
 
 
-def calculate_score(time_taken_ms: int, double_score: bool = False) -> int:
+def calculate_score(time_taken_ms: int, double_score: bool = False, streak: int = 0) -> int:
     """
-    Time-decay scoring:
-      - Answer instantly (0ms)  → 1000 pts
-      - Answer at 20s           → 100 pts
-      - Linear interpolation in between
+    Time-decay scoring with streak multiplier:
+      - Answer instantly (0ms)  → up to 1000 × streak_mult pts
+      - Answer at 20s           → up to 100  × streak_mult pts
+      - Streak multipliers:
+          0 previous correct → ×1.0 (normal)
+          1 previous correct → ×1.25
+          2 previous correct → ×1.5
+          3 previous correct → ×1.75
+          4+ previous correct → ×2.0
+      - Double Score power-up stacks on top (applied last)
     """
     seconds = time_taken_ms / 1000.0
     seconds = max(0, min(seconds, QUESTION_TIME_LIMIT))
     fraction_remaining = 1.0 - (seconds / QUESTION_TIME_LIMIT)
     points = int(MIN_POINTS + (MAX_POINTS - MIN_POINTS) * fraction_remaining)
+    # Apply streak multiplier
+    streak_mult = get_streak_multiplier(streak)
+    points = int(points * streak_mult)
     if double_score:
         points *= 2
     return points
@@ -68,6 +89,8 @@ class PlayerState:
         self.score = 0
         self.correct_answers = 0
         self.wrong_answers = 0
+        self.streak = 0                    # current consecutive correct streak
+        self.best_streak = 0              # highest streak reached this game
         self.current_difficulty = 5        # start at medium difficulty
         self.powerups = {
             "fifty_fifty": True,
@@ -100,8 +123,11 @@ class PlayerState:
         })
         if is_correct:
             self.correct_answers += 1
+            self.streak += 1
+            self.best_streak = max(self.best_streak, self.streak)
         else:
             self.wrong_answers += 1
+            self.streak = 0
         self.score += points_earned
         self.current_difficulty = adapt_difficulty(self.current_difficulty, is_correct)
 
@@ -114,7 +140,8 @@ class GameRoom:
     Signature: emit(event, data, room=None, to=None)
     """
 
-    def __init__(self, room_id: str, emit_fn: Callable, enter_room_fn: Callable):
+    def __init__(self, room_id: str, emit_fn: Callable, enter_room_fn: Callable,
+                 custom_topic: str | None = None):
         self.room_id = room_id
         self.emit = emit_fn           # async emit function
         self.enter_room = enter_room_fn
@@ -130,7 +157,11 @@ class GameRoom:
         self.current_question_start: float = 0
         self.used_question_ids: list[int] = []
 
-        # Per-question answer tracking: name → {correct: bool, points: int}
+        # AI Custom Topic mode
+        self.custom_topic: str | None = custom_topic
+        self.custom_questions: list[dict] | None = None   # set after generation
+
+        # Per-question answer tracking: name → {correct, points, streak, streak_mult}
         self.answers_received: dict[str, dict] = {}
 
         # Tasks
@@ -190,7 +221,7 @@ class GameRoom:
         await self._start_game()
 
     async def _start_game(self):
-        """Begin the game: add bots if needed, load first question."""
+        """Begin the game: add bots, optionally generate AI questions, then start."""
         if self.player_count == 0 or self.state == "in_game":
             return
 
@@ -198,18 +229,44 @@ class GameRoom:
         num_bots = calculate_bot_count(self.player_count)
         self.bot_players = create_bots(num_bots)
 
-        self.state = "in_game"
+        self.state = "in_game"  # Lock early to prevent double-start
 
-        # Send players as objects so frontend knows who is a bot
+        # ── AI Custom Topic: generate questions before game_start ─────────────
+        if self.custom_topic:
+            await self.emit("generating_questions", {
+                "topic": self.custom_topic,
+            }, room=self.room_id)
+            try:
+                from ai_questions import generate_questions
+                self.custom_questions = await generate_questions(self.custom_topic)
+                print(f"[AI] Generated {len(self.custom_questions)} questions "
+                      f"about '{self.custom_topic}'", flush=True)
+            except Exception as e:
+                print(f"[AI] Generation failed: {e} — falling back to DB", flush=True)
+                self.custom_questions = None
+            await self.emit("questions_ready", {
+                "topic":    self.custom_topic,
+                "count":    len(self.custom_questions) if self.custom_questions else 0,
+                "fallback": self.custom_questions is None,
+            }, room=self.room_id)
+
+        # ── Game start ─────────────────────────────────────────────────────────
+        total_questions = (
+            len(self.custom_questions)
+            if self.custom_questions is not None
+            else QUESTIONS_PER_GAME
+        )
+
         all_players = (
             [{"name": p.name, "is_bot": False} for p in self.human_players.values()]
             + [{"name": b.name, "is_bot": True} for b in self.bot_players]
         )
 
         await self.emit("game_start", {
-            "players": all_players,
-            "num_questions": QUESTIONS_PER_GAME,
+            "players":       all_players,
+            "num_questions": total_questions,
             "question_time": QUESTION_TIME_LIMIT,
+            "custom_topic":  self.custom_topic,
         }, room=self.room_id)
 
         await asyncio.sleep(1)
@@ -218,33 +275,43 @@ class GameRoom:
     # ── Questions ─────────────────────────────────────────────────────────────
 
     async def _next_question(self):
-        """Load and send the next question."""
+        """Load and send the next question (from DB or AI-generated pool)."""
         self.current_question_index += 1
 
-        if self.current_question_index >= QUESTIONS_PER_GAME:
-            await self._end_game()
-            return
-
-        # Determine target difficulty based on average human difficulty
-        if self.human_players:
-            avg_diff = sum(p.current_difficulty for p in self.human_players.values()) / len(self.human_players)
-            target = round(avg_diff)
-        else:
-            target = 5
-
-        # Fetch a question within ±1 of target difficulty
-        question = await fetch_question_by_difficulty_range(
-            max(1, target - 1), min(10, target + 1),
-            exclude_ids=self.used_question_ids
+        total_questions = (
+            len(self.custom_questions)
+            if self.custom_questions is not None
+            else QUESTIONS_PER_GAME
         )
-        # Fallback: any difficulty
-        if not question:
-            question = await fetch_question_by_difficulty_range(1, 10, self.used_question_ids)
-        if not question:
+
+        if self.current_question_index >= total_questions:
             await self._end_game()
             return
 
-        self.used_question_ids.append(question["id"])
+        if self.custom_questions is not None:
+            # ── AI mode: pull from pre-generated list ─────────────────────────
+            question = self.custom_questions[self.current_question_index]
+        else:
+            # ── Standard mode: fetch from DB ──────────────────────────────────
+            # Determine target difficulty based on average human difficulty
+            if self.human_players:
+                avg_diff = sum(p.current_difficulty for p in self.human_players.values()) / len(self.human_players)
+                target = round(avg_diff)
+            else:
+                target = 5
+
+            question = await fetch_question_by_difficulty_range(
+                max(1, target - 1), min(10, target + 1),
+                exclude_ids=self.used_question_ids
+            )
+            if not question:
+                question = await fetch_question_by_difficulty_range(1, 10, self.used_question_ids)
+            if not question:
+                await self._end_game()
+                return
+
+            self.used_question_ids.append(question["id"])
+
         self.questions.append(question)
 
         # Reset per-question state
@@ -260,14 +327,14 @@ class GameRoom:
 
         await self.emit("question", {
             "question_number": self.current_question_index + 1,  # 1-indexed for display
-            "question_id": question["id"],
-            "index": self.current_question_index,
-            "total": QUESTIONS_PER_GAME,
-            "question": question["question"],
-            "options": options,          # shuffled list of 4 strings
-            "difficulty": question["difficulty"],
-            "category": question["category"],
-            "time_limit": QUESTION_TIME_LIMIT,
+            "question_id":     question["id"],
+            "index":           self.current_question_index,
+            "total":           total_questions,
+            "question":        question["question"],
+            "options":         options,
+            "difficulty":      question["difficulty"],
+            "category":        question["category"],
+            "time_limit":      QUESTION_TIME_LIMIT,
         }, room=self.room_id)
 
         # Schedule bot answers
@@ -301,10 +368,16 @@ class GameRoom:
 
         is_correct = (answer_text == question["correct"])
         time_taken_ms = int(delay * 1000)
-        points = calculate_score(time_taken_ms) if is_correct else 0
-        bot.add_score(points, is_correct)
+        streak_before = bot.streak
+        points = calculate_score(time_taken_ms, streak=streak_before) if is_correct else 0
+        bot.add_score(points, is_correct)   # updates bot.streak
 
-        self.answers_received[bot.name] = {"correct": is_correct, "points": points}
+        self.answers_received[bot.name] = {
+            "correct":      is_correct,
+            "points":       points,
+            "streak":       bot.streak,
+            "streak_mult":  get_streak_multiplier(streak_before),
+        }
 
         await self.emit("player_answered", {
             "player_name": bot.name,
@@ -351,20 +424,24 @@ class GameRoom:
         for p in self.human_players.values():
             info = self.answers_received.get(p.name, {})
             results.append({
-                "name": p.name,
-                "score": p.score,
-                "correct": info.get("correct", False),
+                "name":         p.name,
+                "score":        p.score,
+                "correct":      info.get("correct", False),
                 "points_earned": info.get("points", 0),
-                "is_bot": False,
+                "streak":       info.get("streak", p.streak),
+                "streak_mult":  info.get("streak_mult", 1.0),
+                "is_bot":       False,
             })
         for b in self.bot_players:
             info = self.answers_received.get(b.name, {})
             results.append({
-                "name": b.name,
-                "score": b.score,
-                "correct": info.get("correct", False),
+                "name":         b.name,
+                "score":        b.score,
+                "correct":      info.get("correct", False),
                 "points_earned": info.get("points", 0),
-                "is_bot": True,
+                "streak":       info.get("streak", b.streak),
+                "streak_mult":  info.get("streak_mult", 1.0),
+                "is_bot":       True,
             })
 
         await self.emit("answer_reveal", {
@@ -393,7 +470,8 @@ class GameRoom:
 
         is_correct = (answer == question["correct"])
         double = player.double_score_active
-        points = calculate_score(elapsed_ms, double_score=double) if is_correct else 0
+        streak_before = player.streak     # capture BEFORE record_answer updates it
+        points = calculate_score(elapsed_ms, double_score=double, streak=streak_before) if is_correct else 0
 
         actual_powerup = "double_score" if double else powerup_used
 
@@ -407,8 +485,13 @@ class GameRoom:
             powerup_used=actual_powerup,
         )
 
-        # Track for reveal
-        self.answers_received[player.name] = {"correct": is_correct, "points": points}
+        # Track for reveal (player.streak is now updated by record_answer)
+        self.answers_received[player.name] = {
+            "correct":     is_correct,
+            "points":      points,
+            "streak":      player.streak,
+            "streak_mult": get_streak_multiplier(streak_before),
+        }
 
         await self.emit("player_answered", {
             "player_name": player.name,

@@ -7,8 +7,10 @@ const PREVIEW_DURATION = 2500; // ms the topic overlay stays up
 export default function QuestionScreen({
   question,
   questionNum,
+  totalQuestions = 10,
   players,
   myScore,
+  myStreak = 0,
   powerups,
   friendHint,
   doubleActive,
@@ -120,13 +122,18 @@ export default function QuestionScreen({
           <div className="q-topbar">
             <div className="q-num">
               <span className="cur">{questionNum}</span>
-              <span className="tot">/ 10</span>
+              <span className="tot">/ {totalQuestions}</span>
             </div>
             {question?.category && (
               <span className="badge cat">{question.category}</span>
             )}
             {question?.difficulty && (
               <span className={`badge ${diffClass}`}>{diffLabel}</span>
+            )}
+            {myStreak >= 2 && (
+              <span className="badge streak" title={`${myStreak} correct in a row!`}>
+                🔥 {myStreak}×
+              </span>
             )}
             {doubleActive && <span className="badge x2">×2 Score</span>}
             <div className="score-chip">
