@@ -1,0 +1,136 @@
+.gameover {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 520px;
+  margin: auto;
+  padding: 1.5rem 1rem;
+  position: relative;
+}
+
+/* Fireworks */
+.gameover__fireworks {
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 1.5rem;
+  font-size: 1.8rem;
+}
+
+.gameover__spark {
+  animation: pop 1s ease infinite;
+}
+
+/* Title */
+.gameover__title {
+  font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--gold), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-align: center;
+  margin-top: 2.5rem;
+}
+
+.gameover__congrats {
+  color: var(--muted);
+  font-size: 1rem;
+  text-align: center;
+}
+
+/* My result */
+.gameover__me {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border: 2px solid var(--accent);
+}
+
+.gameover__my-rank { font-size: 2.5rem; }
+
+.gameover__my-name { font-size: 1.2rem; font-weight: 700; }
+
+.gameover__my-score { color: var(--gold); font-weight: 700; font-size: 1.1rem; }
+
+.gameover__my-stats {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  font-size: .85rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+/* Leaderboard */
+.gameover__board { width: 100%; }
+
+.gameover__board-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.gameover__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+.gameover__entry {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  padding: .6rem .75rem;
+  border-radius: 8px;
+}
+
+.gameover__entry--me {
+  background: rgba(108,99,255,.12);
+  border: 1px solid rgba(108,99,255,.3);
+}
+
+.gameover__pos { width: 30px; text-align: center; font-weight: 700; }
+
+.gameover__ename { flex: 1; font-weight: 500; }
+
+.gameover__bot { color: var(--muted); }
+
+.gameover__correct {
+  color: var(--muted);
+  font-size: .85rem;
+  min-width: 36px;
+  text-align: right;
+}
+
+.gameover__escore {
+  font-weight: 700;
+  color: var(--gold);
+  min-width: 70px;
+  text-align: right;
+}
+
+/* Play again */
+.gameover__play-again {
+  background: linear-gradient(135deg, var(--accent), #8b83ff);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: .85rem 2.5rem;
+  border-radius: 10px;
+  margin-top: .5rem;
+}
+
+.gameover__play-again:hover {
+  box-shadow: 0 0 0 3px rgba(108,99,255,.4);
+}
+
+.gameover__id {
+  color: var(--muted);
+  font-size: .75rem;
+}

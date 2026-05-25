@@ -130,8 +130,8 @@ class GameRoom:
         self.current_question_start: float = 0
         self.used_question_ids: list[int] = []
 
-        # Per-question tracking
-        self.answers_received: dict[str, bool] = {}  # player_name → answered?
+        # Per-question answer tracking: name → {correct: bool, points: int}
+        self.answers_received: dict[str, dict] = {}
 
         # Tasks
         self._question_timer_task: asyncio.Task | None = None
@@ -159,7 +159,7 @@ class GameRoom:
         self.state = "countdown"
         for remaining in range(MATCHMAKING_WAIT, 0, -1):
             await self.emit("lobby_countdown", {
-                "seconds_left": remaining,
+                "seconds_remaining": remaining,
                 "players": [p.name for p in self.human_players.values()]
             }, room=self.room_id)
             await asyncio.sleep(1)
@@ -181,11 +181,15 @@ class GameRoom:
         self.bot_players = create_bots(num_bots)
 
         self.state = "in_game"
-        all_names = [p.name for p in self.human_players.values()] + \
-                    [b.name for b in self.bot_players]
+
+        # Send players as objects so frontend knows who is a bot
+        all_players = (
+            [{"name": p.name, "is_bot": False} for p in self.human_players.values()]
+            + [{"name": b.name, "is_bot": True} for b in self.bot_players]
+        )
 
         await self.emit("game_start", {
-            "players": all_names,
+            "players": all_players,
             "num_questions": QUESTIONS_PER_GAME,
             "question_time": QUESTION_TIME_LIMIT,
         }, room=self.room_id)
@@ -237,9 +241,10 @@ class GameRoom:
         self.current_question_start = time.time()
 
         await self.emit("question", {
+            "question_number": self.current_question_index + 1,  # 1-indexed for display
+            "question_id": question["id"],
             "index": self.current_question_index,
             "total": QUESTIONS_PER_GAME,
-            "id": question["id"],
             "question": question["question"],
             "options": options,          # shuffled list of 4 strings
             "difficulty": question["difficulty"],
@@ -281,14 +286,11 @@ class GameRoom:
         points = calculate_score(time_taken_ms) if is_correct else 0
         bot.add_score(points, is_correct)
 
-        self.answers_received[bot.name] = True
+        self.answers_received[bot.name] = {"correct": is_correct, "points": points}
 
         await self.emit("player_answered", {
             "player_name": bot.name,
             "is_bot": True,
-            "is_correct": is_correct,
-            "points": points,
-            "scores": self._get_scores(),
         }, room=self.room_id)
 
         await self._check_all_answered(question)
@@ -325,10 +327,31 @@ class GameRoom:
             await self._reveal_answer(question)
 
     async def _reveal_answer(self, question: dict):
-        """Send the correct answer and per-question scores."""
-        await self.emit("question_result", {
+        """Send the correct answer and per-question results."""
+        # Build per-player result rows
+        results = []
+        for p in self.human_players.values():
+            info = self.answers_received.get(p.name, {})
+            results.append({
+                "name": p.name,
+                "score": p.score,
+                "correct": info.get("correct", False),
+                "points_earned": info.get("points", 0),
+                "is_bot": False,
+            })
+        for b in self.bot_players:
+            info = self.answers_received.get(b.name, {})
+            results.append({
+                "name": b.name,
+                "score": b.score,
+                "correct": info.get("correct", False),
+                "points_earned": info.get("points", 0),
+                "is_bot": True,
+            })
+
+        await self.emit("answer_reveal", {
             "correct_answer": question["correct"],
-            "scores": self._get_scores(),
+            "results": results,
             "question_index": self.current_question_index,
         }, room=self.room_id)
 
@@ -340,7 +363,6 @@ class GameRoom:
     async def handle_answer(self, sid: str, answer: str, powerup_used: str | None = None):
         """
         Called when a human player submits an answer.
-        powerup_used: 'double_score' if they activated it this question, else None.
         """
         player = self.human_players.get(sid)
         if not player or player.answered_this_question:
@@ -367,12 +389,12 @@ class GameRoom:
             powerup_used=actual_powerup,
         )
 
+        # Track for reveal
+        self.answers_received[player.name] = {"correct": is_correct, "points": points}
+
         await self.emit("player_answered", {
             "player_name": player.name,
             "is_bot": False,
-            "is_correct": is_correct,
-            "points": points,
-            "scores": self._get_scores(),
         }, room=self.room_id)
 
         await self._check_all_answered(question)
@@ -400,12 +422,24 @@ class GameRoom:
     # ── Scores ────────────────────────────────────────────────────────────────
 
     def _get_scores(self) -> list[dict]:
-        """Return sorted leaderboard snapshot."""
+        """Return sorted leaderboard snapshot with full stats."""
         scores = []
         for p in self.human_players.values():
-            scores.append({"name": p.name, "score": p.score, "is_bot": False})
+            scores.append({
+                "name": p.name,
+                "score": p.score,
+                "is_bot": False,
+                "correct": p.correct_answers,
+                "wrong": p.wrong_answers,
+            })
         for b in self.bot_players:
-            scores.append({"name": b.name, "score": b.score, "is_bot": True})
+            scores.append({
+                "name": b.name,
+                "score": b.score,
+                "is_bot": True,
+                "correct": b.correct_answers,
+                "wrong": b.wrong_answers,
+            })
         scores.sort(key=lambda x: x["score"], reverse=True)
         return scores
 
@@ -417,11 +451,6 @@ class GameRoom:
 
         scores = self._get_scores()
         winner = scores[0] if scores else None
-
-        await self.emit("game_over", {
-            "leaderboard": scores,
-            "winner": winner,
-        }, room=self.room_id)
 
         # Build DB payload
         players_data = []
@@ -458,7 +487,14 @@ class GameRoom:
             "answers": all_answers,
         }
 
+        game_id = None
         try:
-            await save_game_result(game_data)
+            game_id = await save_game_result(game_data)
         except Exception as e:
             print(f"[DB] Error saving game: {e}")
+
+        await self.emit("game_over", {
+            "leaderboard": scores,
+            "winner": winner,
+            "game_id": game_id,
+        }, room=self.room_id)

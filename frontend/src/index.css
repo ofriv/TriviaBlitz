@@ -1,0 +1,85 @@
+/* ── Global Reset & Tokens ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0d0f1a;
+  --surface:   #161929;
+  --card:      #1e2235;
+  --border:    #2e3350;
+  --accent:    #6c63ff;
+  --accent2:   #ff6584;
+  --gold:      #ffd700;
+  --green:     #4ade80;
+  --red:       #f87171;
+  --text:      #e8eaf0;
+  --muted:     #7a7f9a;
+  --radius:    12px;
+  --shadow:    0 4px 24px rgba(0,0,0,.45);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Utility ───────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 2rem;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  border-radius: 8px;
+  transition: all .15s ease;
+}
+
+button:active { transform: scale(.97); }
+
+input {
+  font-family: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: .65rem 1rem;
+  outline: none;
+  width: 100%;
+}
+
+input:focus { border-color: var(--accent); }
+
+/* ── Animations ────────────────────────────────────────── */
+@keyframes fadeIn  { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:none } }
+@keyframes pop     { 0%,100% { transform:scale(1) } 50% { transform:scale(1.08) } }
+@keyframes shake   { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }
+@keyframes slideIn { from { transform:translateX(120%) } to { transform:translateX(0) } }
+@keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.4} }
+@keyframes spin    { to { stroke-dashoffset: 0 } }
+
+.fade-in  { animation: fadeIn .35s ease both; }
+.pop      { animation: pop   .3s ease; }
+.shake    { animation: shake .4s ease; }
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

@@ -1,0 +1,135 @@
+.lobby {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.75rem;
+  width: 100%;
+  max-width: 500px;
+  margin: auto;
+  padding: 2rem 1rem;
+}
+
+.lobby__header { text-align: center; }
+
+.lobby__title {
+  font-size: 1.75rem;
+  font-weight: 800;
+}
+
+.lobby__sub {
+  color: var(--muted);
+  font-size: .9rem;
+  margin-top: .4rem;
+}
+
+/* ── Countdown ring ─── */
+.lobby__timer {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.lobby__ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+  width: 100%;
+  height: 100%;
+}
+
+.lobby__ring-bg {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 8;
+}
+
+.lobby__ring-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 276.46;
+  transition: stroke-dashoffset .9s linear;
+}
+
+.lobby__timer-num {
+  font-size: 2.8rem;
+  font-weight: 800;
+  line-height: 1;
+  z-index: 1;
+}
+
+.lobby__timer-label {
+  font-size: .75rem;
+  color: var(--muted);
+  z-index: 1;
+}
+
+/* ── Player list ─── */
+.lobby__players {
+  width: 100%;
+}
+
+.lobby__players-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.lobby__count {
+  background: var(--accent);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 700;
+  border-radius: 99px;
+  padding: .1rem .5rem;
+}
+
+.lobby__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+.lobby__player {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  animation: fadeIn .3s ease both;
+}
+
+.lobby__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.lobby__pname { flex: 1; }
+
+.lobby__you { color: var(--accent); font-size: .85rem; }
+
+.lobby__ready { color: var(--green); font-size: 1.1rem; }
+
+.lobby__empty { color: var(--muted); font-style: italic; animation: pulse 1.5s ease infinite; }
+
+.lobby__hint {
+  color: var(--muted);
+  font-size: .85rem;
+  text-align: center;
+  max-width: 340px;
+}

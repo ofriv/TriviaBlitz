@@ -2,30 +2,32 @@
 Main Socket.IO + aiohttp server for the Trivia game.
 
 Events received from client:
-  join_lobby      {name: str}
+  join_lobby      {player_name: str}
   submit_answer   {answer: str}
-  use_powerup     {powerup: "fifty_fifty" | "call_friend" | "double_score"}
+  use_powerup     {type: "fifty_fifty" | "call_friend" | "double_score"}
   chat_message    {message: str}
   send_emoji      {emoji: str}
   request_stats   {}
   request_leaderboard {}
 
 Events emitted to client:
-  lobby_countdown  {seconds_left, players}
-  game_start       {players, num_questions, question_time}
-  question         {index, total, id, question, options, difficulty, category, time_limit}
-  player_answered  {player_name, is_bot, is_correct, points, scores}
-  question_result  {correct_answer, scores, question_index}
-  game_over        {leaderboard, winner}
-  powerup_result   {powerup, data}   (e.g. fifty_fifty removed options)
-  friend_advice    {advice: str}
-  chat             {player_name, message, timestamp}
-  emoji_reaction   {player_name, emoji, timestamp}
-  player_joined    {name, players}
-  player_left      {name, players}
-  error            {message}
-  your_stats       {stats}
-  leaderboard      {entries}
+  lobby_update         {players: [{name, is_bot}]}
+  lobby_countdown      {seconds_remaining, players: [str]}
+  game_start           {players: [{name, is_bot}], num_questions, question_time}
+  question             {question_number, question_id, question, options, difficulty, category, time_limit}
+  player_answered      {player_name, is_bot}
+  answer_reveal        {correct_answer, results: [{name, score, correct, points_earned, is_bot}]}
+  game_over            {leaderboard: [{name, score, is_bot, correct, wrong}], winner, game_id}
+  fifty_fifty_result   {removed: [str, str], player_name}
+  double_score_activated {player_name}
+  call_friend_result   {hint: str, player_name}
+  chat_message         {player_name, message, timestamp}
+  emoji_reaction       {player_name, emoji, timestamp}
+  player_joined        {name, players: [{name, is_bot}]}
+  player_left          {name, players: [str]}
+  error                {message}
+  your_stats           {stats}
+  leaderboard          {entries}
 """
 
 import os
@@ -33,7 +35,6 @@ import sys
 import asyncio
 import time
 import io
-import json
 
 # Fix Windows UTF-8
 if hasattr(sys.stdout, 'buffer'):
@@ -60,8 +61,6 @@ app = web.Application()
 sio.attach(app)
 
 # ── Game room registry ────────────────────────────────────────────────────────
-# For simplicity: one shared lobby room. All connected players join the same game.
-# Could be extended to multiple rooms later.
 LOBBY_ROOM = "main_lobby"
 current_game: GameRoom | None = None
 lobby_lock = asyncio.Lock()
@@ -82,6 +81,13 @@ async def emit_to_room(event: str, data: dict, room: str = None, to: str = None)
 
 async def enter_room_fn(sid: str, room: str):
     await sio.enter_room(sid, room)
+
+
+def _lobby_player_list() -> list[dict]:
+    """Return current human players as object list for the frontend."""
+    if current_game is None:
+        return []
+    return [{"name": p.name, "is_bot": False} for p in current_game.human_players.values()]
 
 
 # ── Connection events ─────────────────────────────────────────────────────────
@@ -106,7 +112,7 @@ async def disconnect(sid):
         }, room=LOBBY_ROOM)
 
         # If everyone left during waiting, cancel matchmaking
-        if current_game.state == "waiting" or current_game.state == "countdown":
+        if current_game.state in ("waiting", "countdown"):
             if current_game.player_count == 0:
                 current_game.cancel_matchmaking()
                 current_game = None
@@ -117,12 +123,12 @@ async def disconnect(sid):
 async def join_lobby(sid, data):
     global current_game
 
-    name = data.get("name", "").strip()
+    # Accept both "player_name" (from React) and "name" (legacy)
+    name = (data.get("player_name") or data.get("name", "")).strip()
     if not name:
         await sio.emit("error", {"message": "Name cannot be empty."}, to=sid)
         return
 
-    # Limit name length
     name = name[:20]
 
     async with lobby_lock:
@@ -143,8 +149,18 @@ async def join_lobby(sid, data):
         connected_players[sid] = name
         current_game.add_player(sid, name)
 
-        players = [p.name for p in current_game.human_players.values()]
-        await sio.emit("player_joined", {"name": name, "players": players}, room=LOBBY_ROOM)
+        players = _lobby_player_list()
+
+        # Tell everyone a player joined
+        await sio.emit("player_joined", {
+            "name": name,
+            "players": players,
+        }, room=LOBBY_ROOM)
+
+        # Tell the joining player the current lobby state
+        await sio.emit("lobby_update", {
+            "players": players,
+        }, to=sid)
 
         # Start matchmaking countdown when first player joins
         if current_game.player_count == 1:
@@ -171,22 +187,26 @@ async def use_powerup(sid, data):
     if sid not in current_game.human_players:
         return
 
-    powerup = data.get("powerup", "")
+    # Accept both "type" (React) and "powerup" (legacy)
+    powerup = (data.get("type") or data.get("powerup", "")).strip()
     player = current_game.human_players[sid]
 
     if powerup == "fifty_fifty":
         result = await current_game.handle_fifty_fifty(sid)
         if result:
-            await sio.emit("powerup_result", {"powerup": "fifty_fifty", "data": result}, room=LOBBY_ROOM)
+            # Only the requesting player and their room see it
+            await sio.emit("fifty_fifty_result", {
+                "removed": result["removed"],
+                "player_name": result["player_name"],
+            }, room=LOBBY_ROOM)
         else:
             await sio.emit("error", {"message": "Power-up already used or unavailable."}, to=sid)
 
     elif powerup == "double_score":
         ok = await current_game.handle_double_score(sid)
         if ok:
-            await sio.emit("powerup_result", {
-                "powerup": "double_score",
-                "data": {"player_name": player.name}
+            await sio.emit("double_score_activated", {
+                "player_name": player.name,
             }, room=LOBBY_ROOM)
         else:
             await sio.emit("error", {"message": "Double score already used or unavailable."}, to=sid)
@@ -197,17 +217,11 @@ async def use_powerup(sid, data):
             return
 
         # Get the current question
-        if current_game.current_question_index < 0:
+        if current_game.current_question_index < 0 or current_game.current_question_index >= len(current_game.questions):
             return
         question = current_game.questions[current_game.current_question_index]
 
-        # Notify room that player is calling a friend
-        await sio.emit("powerup_result", {
-            "powerup": "call_friend",
-            "data": {"player_name": player.name, "status": "calling"}
-        }, room=LOBBY_ROOM)
-
-        # Call friend async (don't block)
+        # Call friend async (don't block the event loop)
         asyncio.create_task(_call_friend_task(sid, player.name, question))
 
     else:
@@ -215,11 +229,11 @@ async def use_powerup(sid, data):
 
 
 async def _call_friend_task(sid: str, player_name: str, question: dict):
-    """Ask the LLM friend and emit the advice back."""
-    advice = await ask_friend(question)
-    await sio.emit("friend_advice", {
+    """Ask the LLM friend and emit the hint back to the room."""
+    hint = await ask_friend(question)
+    await sio.emit("call_friend_result", {
         "player_name": player_name,
-        "advice": advice,
+        "hint": hint,
     }, room=LOBBY_ROOM)
 
 
@@ -227,11 +241,11 @@ async def _call_friend_task(sid: str, player_name: str, question: dict):
 @sio.event
 async def chat_message(sid, data):
     name = connected_players.get(sid, "Unknown")
-    message = str(data.get("message", "")).strip()[:200]  # limit length
+    message = str(data.get("message", "")).strip()[:200]
     if not message:
         return
     ts = int(time.time() * 1000)
-    await sio.emit("chat", {
+    await sio.emit("chat_message", {
         "player_name": name,
         "message": message,
         "timestamp": ts,
@@ -242,7 +256,7 @@ async def chat_message(sid, data):
 async def send_emoji(sid, data):
     name = connected_players.get(sid, "Unknown")
     emoji = str(data.get("emoji", "")).strip()
-    ALLOWED_EMOJIS = ["😂", "🔥", "👏", "😮", "🤔", "😅", "💯", "🎉", "😭", "🤯"]
+    ALLOWED_EMOJIS = ["😂", "🔥", "👏", "😮", "🤔", "😅", "💯", "🎉", "😭", "🤯", "👍", "❤️"]
     if emoji not in ALLOWED_EMOJIS:
         return
     ts = int(time.time() * 1000)
