@@ -1,8 +1,7 @@
-python-socketio[asyncio_client]
+python-socketio[asyncio]
 aiohttp
 aiosqlite
 python-dotenv
 pydantic-ai
 openai
-google-generativeai
 uvicorn
