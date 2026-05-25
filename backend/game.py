@@ -157,13 +157,21 @@ class GameRoom:
     async def _matchmaking_loop(self):
         """Wait up to 30s, then start the game."""
         self.state = "countdown"
-        for remaining in range(MATCHMAKING_WAIT, 0, -1):
-            await self.emit("lobby_countdown", {
-                "seconds_remaining": remaining,
-                "players": [p.name for p in self.human_players.values()]
-            }, room=self.room_id)
-            await asyncio.sleep(1)
-        await self._start_game()
+        try:
+            for remaining in range(MATCHMAKING_WAIT, 0, -1):
+                print(f"[Lobby] countdown {remaining}", flush=True)
+                await self.emit("lobby_countdown", {
+                    "seconds_remaining": remaining,
+                    "players": [p.name for p in self.human_players.values()]
+                }, room=self.room_id)
+                await asyncio.sleep(1)
+            await self._start_game()
+        except asyncio.CancelledError:
+            print("[Lobby] matchmaking cancelled", flush=True)
+            raise
+        except Exception as e:
+            print(f"[Lobby] matchmaking error: {e}", flush=True)
+            raise
 
     def cancel_matchmaking(self):
         if self._matchmaking_task and not self._matchmaking_task.done():
@@ -171,9 +179,19 @@ class GameRoom:
 
     # ── Game start ────────────────────────────────────────────────────────────
 
+    async def force_start(self):
+        """Cancel the matchmaking wait and start the game immediately (solo skip)."""
+        if self.state not in ("waiting", "countdown"):
+            return
+        self.cancel_matchmaking()
+        # Yield one event-loop tick so CancelledError is delivered to the
+        # matchmaking task before _start_game runs (avoids any double-start).
+        await asyncio.sleep(0)
+        await self._start_game()
+
     async def _start_game(self):
         """Begin the game: add bots if needed, load first question."""
-        if self.player_count == 0:
+        if self.player_count == 0 or self.state == "in_game":
             return
 
         # Add bots if solo player

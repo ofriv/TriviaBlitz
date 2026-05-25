@@ -1,47 +1,51 @@
 import { useState } from 'react';
-import './LandingScreen.css';
 
 export default function LandingScreen({ onJoin, defaultName }) {
-  const [name, setName] = useState(defaultName || '');
+  const [name, setName]   = useState(defaultName || '');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleJoin = () => {
     const trimmed = name.trim();
-    if (!trimmed) { setError('Please enter your name!'); return; }
-    if (trimmed.length > 20) { setError('Name must be 20 chars or less'); return; }
+    if (!trimmed)            { setError('Please enter a name'); return; }
+    if (trimmed.length > 20) { setError('Name must be 20 characters or less'); return; }
     onJoin(trimmed);
   };
 
   return (
-    <div className="landing fade-in">
-      <div className="landing__hero">
-        <div className="landing__trophy">🏆</div>
-        <h1 className="landing__title">TriviaBlitz</h1>
-        <p className="landing__subtitle">Real-time multiplayer trivia — outsmart the competition!</p>
-      </div>
+    <div className="screen">
+      <div className="landing">
+        <div className="eyebrow">Round starts in 30s</div>
 
-      <form className="landing__form card" onSubmit={handleSubmit}>
-        <label className="landing__label">Your name</label>
-        <input
-          type="text"
-          value={name}
-          onChange={e => { setName(e.target.value); setError(''); }}
-          placeholder="Enter your name…"
-          maxLength={20}
-          autoFocus
-        />
-        {error && <p className="landing__error">{error}</p>}
-        <button type="submit" className="landing__btn">
-          Join Game →
-        </button>
-      </form>
+        <h1>Trivia<span className="accent">Blitz</span></h1>
 
-      <div className="landing__features">
-        <span>⚡ 10 Questions</span>
-        <span>🎯 Adaptive Difficulty</span>
-        <span>⏱ 20s Timer</span>
-        <span>🤖 AI Bots</span>
+        <p className="tagline">
+          Fast-paced trivia with friends, strangers, and surprisingly smart bots.
+        </p>
+
+        <div className="join">
+          <input
+            type="text"
+            placeholder="Pick a name…"
+            value={name}
+            onChange={e => { setName(e.target.value); setError(''); }}
+            onKeyDown={e => e.key === 'Enter' && handleJoin()}
+            maxLength={20}
+          />
+          <button className="btn-primary" onClick={handleJoin}>Join Game →</button>
+        </div>
+        {error && <p className="error">{error}</p>}
+
+        <div className="feature-row">
+          <div className="feature-pill"><span className="ico">⚡</span>Real-time multiplayer</div>
+          <div className="feature-pill"><span className="ico">🤖</span>AI bots fill empty slots</div>
+          <div className="feature-pill"><span className="ico">🎯</span>Power-ups</div>
+        </div>
+
+        <div className="stats">
+          <div className="stat"><div className="n">2,847</div><div className="l">Playing now</div></div>
+          <div className="stat"><div className="n">14k</div><div className="l">Questions</div></div>
+          <div className="stat"><div className="n">87</div><div className="l">Categories</div></div>
+        </div>
       </div>
     </div>
   );

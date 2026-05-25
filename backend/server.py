@@ -111,11 +111,14 @@ async def disconnect(sid):
             "players": remaining,
         }, room=LOBBY_ROOM)
 
-        # If everyone left during waiting, cancel matchmaking
-        if current_game.state in ("waiting", "countdown"):
-            if current_game.player_count == 0:
-                current_game.cancel_matchmaking()
-                current_game = None
+        # If all humans left (any state), cancel everything and reset so the
+        # next player can start a fresh game without getting "in progress" error.
+        if current_game.player_count == 0:
+            current_game.cancel_matchmaking()
+            if (current_game._question_timer_task
+                    and not current_game._question_timer_task.done()):
+                current_game._question_timer_task.cancel()
+            current_game = None
 
 
 # ── Lobby ─────────────────────────────────────────────────────────────────────
@@ -165,6 +168,19 @@ async def join_lobby(sid, data):
         # Start matchmaking countdown when first player joins
         if current_game.player_count == 1:
             current_game.start_matchmaking_countdown()
+
+
+# ── Skip wait (solo) ──────────────────────────────────────────────────────────
+@sio.event
+async def skip_wait(sid, data):
+    global current_game
+    if current_game is None or current_game.state not in ("waiting", "countdown"):
+        return
+    if sid not in current_game.human_players:
+        return
+    if current_game.player_count > 1:   # only the solo player can skip
+        return
+    await current_game.force_start()
 
 
 # ── Answer submission ─────────────────────────────────────────────────────────

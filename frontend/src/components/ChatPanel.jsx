@@ -1,28 +1,31 @@
 import { useState, useRef, useEffect } from 'react';
-import './ChatPanel.css';
+import Avatar from './Avatar';
 
 const EMOJIS = ['👍', '😂', '😮', '🔥', '💯', '😭', '🤔', '🎉', '👏', '❤️'];
 
 export default function ChatPanel({ messages, playerName, onSend, onEmoji }) {
-  const [text, setText]   = useState('');
-  const [open, setOpen]   = useState(false);
-  const [bump, setBump]   = useState(false);  // unread badge pulse
+  const [text, setText] = useState('');
+  const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
   const endRef = useRef(null);
   const prevLen = useRef(messages.length);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     if (open) {
       endRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setUnread(0);
       prevLen.current = messages.length;
     } else if (messages.length > prevLen.current) {
-      setBump(true);
+      setUnread(v => v + (messages.length - prevLen.current));
       prevLen.current = messages.length;
     }
   }, [messages, open]);
 
   useEffect(() => {
-    if (open) { setBump(false); endRef.current?.scrollIntoView(); }
+    if (open) {
+      setUnread(0);
+      endRef.current?.scrollIntoView();
+    }
   }, [open]);
 
   const handleSend = (e) => {
@@ -37,64 +40,78 @@ export default function ChatPanel({ messages, playerName, onSend, onEmoji }) {
     <>
       {/* Toggle button */}
       <button
-        className={`chat__toggle ${bump ? 'chat__toggle--bump' : ''}`}
+        className="chat-toggle"
         onClick={() => setOpen(v => !v)}
         title="Chat"
       >
         💬
-        {bump && <span className="chat__badge" />}
+        {unread > 0 && (
+          <span className="unread">{unread > 9 ? '9+' : unread}</span>
+        )}
       </button>
 
       {/* Panel */}
       {open && (
-        <div className="chat__panel fade-in">
-          <div className="chat__header">
-            <span>💬 Chat</span>
-            <button className="chat__close" onClick={() => setOpen(false)}>✕</button>
-          </div>
-
-          {/* Emoji quick-send */}
-          <div className="chat__emojis">
-            {EMOJIS.map(e => (
-              <button key={e} className="chat__emoji-btn" onClick={() => onEmoji(e)}>{e}</button>
-            ))}
+        <div className="chat-panel">
+          <div className="chat-header">
+            <div className="ttl">
+              <div className="dot" />
+              Chat
+            </div>
+            <button onClick={() => setOpen(false)}>✕</button>
           </div>
 
           {/* Messages */}
-          <div className="chat__messages">
+          <div className="chat-msgs">
             {messages.length === 0 && (
-              <p className="chat__empty">No messages yet…</p>
+              <p style={{ color: 'var(--text-3)', fontSize: 13, textAlign: 'center', padding: '20px 0', fontStyle: 'italic' }}>
+                No messages yet…
+              </p>
             )}
             {messages.map((msg, i) => {
               const isMe = msg.player_name === playerName;
+
               if (msg.type === 'emoji') {
                 return (
-                  <div key={i} className="chat__emoji-msg">
-                    <span className="chat__emoji-who">{msg.player_name}</span>
-                    <span className="chat__emoji-val">{msg.emoji}</span>
+                  <div key={i} style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-3)', padding: '2px 0' }}>
+                    <span style={{ fontWeight: 700 }}>{msg.player_name}</span>
+                    {' '}reacted {msg.emoji}
                   </div>
                 );
               }
+
               return (
-                <div key={i} className={`chat__msg ${isMe ? 'chat__msg--me' : ''}`}>
-                  {!isMe && <span className="chat__who">{msg.player_name}</span>}
-                  <span className="chat__bubble">{msg.message || msg.text}</span>
+                <div key={i} className={`chat-msg ${isMe ? 'me' : ''}`}>
+                  {!isMe && <Avatar name={msg.player_name} size={24} />}
+                  <div className="bubble">
+                    {!isMe && <div className="nm">{msg.player_name}</div>}
+                    {msg.message || msg.text}
+                    {isMe && <div className="nm">{playerName}</div>}
+                  </div>
                 </div>
               );
             })}
             <div ref={endRef} />
           </div>
 
+          {/* Emoji quick-send */}
+          <div className="chat-emoji">
+            {EMOJIS.map(e => (
+              <button key={e} onClick={() => onEmoji(e)}>{e}</button>
+            ))}
+          </div>
+
           {/* Input */}
-          <form className="chat__form" onSubmit={handleSend}>
+          <div className="chat-input">
             <input
               value={text}
               onChange={e => setText(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSend()}
               placeholder="Say something…"
               maxLength={200}
             />
-            <button type="submit" className="chat__send">Send</button>
-          </form>
+            <button className="send" onClick={handleSend}>Send</button>
+          </div>
         </div>
       )}
     </>

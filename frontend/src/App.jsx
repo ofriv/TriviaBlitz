@@ -58,7 +58,10 @@ export default function App() {
     });
 
     // Game is starting — {players: [{name, is_bot}], ...}
+    // NOTE: do NOT call setScreen here — question is not yet available.
+    // The 'question' event (arrives ~1s later) calls setScreen('question').
     socket.on('game_start', (data) => {
+      console.log('[game_start] received', data);
       // Initialise all players with score=0, answered=false
       const gamePlayers = (data.players ?? []).map(p => ({
         ...p,
@@ -71,11 +74,12 @@ export default function App() {
       setChatMessages([]);
       setFriendHint(null);
       setDoubleActive(false);
-      setScreen('question');
+      // Stay on lobby screen until the first 'question' event arrives
     });
 
     // New question — {question_number, question_id, question, options, difficulty, category, time_limit}
     socket.on('question', (data) => {
+      console.log('[question] received', data);
       setQuestion(data);
       setQNum(data.question_number ?? 1);
       setRevealData(null);
@@ -192,15 +196,20 @@ export default function App() {
     socket.emit('send_emoji', { emoji });
   }, [socket]);
 
-  const playAgain = useCallback(() => {
+  const skipWait = useCallback(() => {
+    socket.emit('skip_wait', {});
+  }, [socket]);
+
+  const goToMainMenu = useCallback(() => {
     setGameResult(null);
     setQuestion(null);
     setRevealData(null);
     setPlayers([]);
     setCountdown(30);
-    setScreen('lobby');
-    socket.emit('join_lobby', { player_name: playerName });
-  }, [socket, playerName]);
+    setChatMessages([]);
+    setScreen('landing');
+    // No socket emit — user can choose a new name or just rejoin from landing
+  }, []);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   const showChat = ['lobby', 'question', 'reveal'].includes(screen);
@@ -211,7 +220,14 @@ export default function App() {
         <LandingScreen onJoin={joinLobby} defaultName={playerName} />
       )}
       {screen === 'lobby' && (
-        <LobbyScreen players={players} countdown={countdown} playerName={playerName} />
+        <LobbyScreen players={players} countdown={countdown} playerName={playerName} onSkipWait={skipWait} />
+      )}
+      {screen === 'question' && !question && (
+        <div className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <p style={{ color: 'var(--gold)', fontSize: '1.25rem', fontFamily: 'var(--font-display)', fontStyle: 'italic' }}>
+            Starting game…
+          </p>
+        </div>
       )}
       {screen === 'question' && question && (
         <QuestionScreen
@@ -237,7 +253,7 @@ export default function App() {
         <GameOverScreen
           result={gameResult}
           playerName={playerName}
-          onPlayAgain={playAgain}
+          onMainMenu={goToMainMenu}
         />
       )}
       {showChat && (

@@ -1,61 +1,117 @@
-import './RevealScreen.css';
+import { useState, useEffect } from 'react';
+import Avatar from './Avatar';
+
+const REVEAL_SECONDS = 3;
 
 export default function RevealScreen({ revealData, playerName, questionNum }) {
-  const { correct_answer, results = [], scores = {} } = revealData;
+  const { correct_answer, results = [] } = revealData;
 
-  // Sort by score descending
   const sorted = [...results].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  const me = results.find(r => r.name === playerName);
-  const myResult = me;
+  const me     = results.find(r => r.name === playerName);
+
+  // 3-2-1 countdown
+  const [secondsLeft, setSecondsLeft] = useState(REVEAL_SECONDS);
+
+  useEffect(() => {
+    setSecondsLeft(REVEAL_SECONDS);
+  }, [revealData]);
+
+  useEffect(() => {
+    if (secondsLeft <= 0) return;
+    const id = setTimeout(() => setSecondsLeft(t => t - 1), 1000);
+    return () => clearTimeout(id);
+  }, [secondsLeft]);
+
+  const rankClass = (i) => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
 
   return (
-    <div className="reveal fade-in">
-      <div className="reveal__header">
-        <span className="reveal__qnum">Question {questionNum} / 10</span>
-        <h2 className="reveal__title">Answer Revealed!</h2>
-      </div>
+    <div className="screen">
+      <div className="reveal">
 
-      {/* Correct answer */}
-      <div className="reveal__correct card">
-        <span className="reveal__correct-label">✅ Correct answer</span>
-        <p className="reveal__correct-text">{correct_answer}</p>
-      </div>
-
-      {/* My result */}
-      {myResult && (
-        <div className={`reveal__my-result card ${myResult.correct ? 'reveal__my-result--correct' : 'reveal__my-result--wrong'}`}>
-          {myResult.correct ? (
-            <>
-              <span className="reveal__icon">🎉</span>
-              <span>You got it! <strong>+{myResult.points_earned?.toLocaleString() ?? '?'} pts</strong></span>
-            </>
-          ) : (
-            <>
-              <span className="reveal__icon">❌</span>
-              <span>Not this time! Total: <strong>{myResult.score?.toLocaleString() ?? '?'} pts</strong></span>
-            </>
-          )}
+        {/* Correct answer banner */}
+        <div className="correct-banner card">
+          <div className="lbl">✅ Correct Answer</div>
+          <div className="ans">{correct_answer}</div>
         </div>
-      )}
 
-      {/* Scoreboard */}
-      <div className="reveal__scores card">
-        <h3 className="reveal__scores-title">Current Standings</h3>
-        <ol className="reveal__list">
-          {sorted.map((r, i) => (
-            <li key={r.name} className={`reveal__entry ${r.name === playerName ? 'reveal__entry--me' : ''}`}>
-              <span className="reveal__rank">
-                {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
-              </span>
-              <span className="reveal__pname">{r.name}</span>
-              {r.correct && <span className="reveal__correct-badge">✓</span>}
-              <span className="reveal__pscore">{(r.score ?? 0).toLocaleString()}</span>
-            </li>
-          ))}
-        </ol>
+        {/* My result + leaderboard grid */}
+        <div className="reveal-grid">
+
+          {/* My result */}
+          {me ? (
+            <div className={`result-card card ${me.correct ? 'correct' : 'wrong'}`}>
+              <div className={`result-icon ${me.correct ? 'correct' : 'wrong'}`}>
+                {me.correct ? '✓' : '✗'}
+              </div>
+              <div className="result-label">
+                {me.correct ? 'Correct!' : 'Wrong answer'}
+              </div>
+              <div className={`result-points ${me.correct ? 'correct' : 'wrong'}`}>
+                {me.correct
+                  ? `+${(me.points_earned ?? 0).toLocaleString()}`
+                  : '+0'}
+              </div>
+              <div className="result-total">
+                <span className="coin" />
+                {(me.score ?? 0).toLocaleString()} pts total
+              </div>
+            </div>
+          ) : (
+            <div className="result-card card">
+              <div className="result-label" style={{ marginTop: 24 }}>
+                Question {questionNum} / 10
+              </div>
+            </div>
+          )}
+
+          {/* Leaderboard */}
+          <div className="leaderboard card">
+            <div style={{ padding: '12px 14px 4px', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.1em' }}>
+              Current Standings
+            </div>
+            {sorted.map((r, i) => (
+              <div
+                key={r.name}
+                className={`lb-row ${r.name === playerName ? 'me' : ''} ${rankClass(i)}`}
+              >
+                <div className="rank">
+                  {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                </div>
+                <Avatar name={r.name} size={28} />
+                <div className="nm">
+                  {r.name}
+                  {r.name === playerName && <span className="you">YOU</span>}
+                </div>
+                {r.correct && (
+                  <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 700 }}>✓</span>
+                )}
+                <div className="pts">
+                  <span className="coin" />
+                  {(r.score ?? 0).toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+
+        </div>
+
+        {/* 3-2-1 countdown to next question */}
+        <div className="reveal-countdown">
+          <div className={`reveal-countdown__num ${secondsLeft === 0 ? 'done' : ''}`}>
+            {secondsLeft > 0 ? secondsLeft : '…'}
+          </div>
+          <div className="reveal-countdown__label">next question</div>
+          <div className="reveal-countdown__dots">
+            {[3, 2, 1].map(n => (
+              <div
+                key={n}
+                className={`reveal-countdown__dot ${secondsLeft >= n ? 'active' : ''}`}
+              />
+            ))}
+          </div>
+        </div>
+
       </div>
-
-      <p className="reveal__next">Next question in a moment…</p>
     </div>
   );
 }

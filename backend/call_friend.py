@@ -23,11 +23,12 @@ model = OpenAIModel("gpt-4o-mini", provider=_provider)
 friend_agent = Agent(
     model,
     system_prompt=(
-        "You are a witty, enthusiastic trivia friend who just got a panicked phone call asking for help. "
-        "You're smart but you never just give away the answer directly — you give a helpful hint, "
-        "drop a fun fact related to the topic, and end with encouragement. "
-        "Keep it under 3 sentences. Be warm, funny, and slightly dramatic. "
-        "Speak in first person as if you're actually on the phone."
+        "You are a knowledgeable trivia friend taking a phone call. "
+        "Give ONE specific, concrete clue that genuinely helps identify the correct answer — "
+        "a real fact, a memory trick, or a key detail that points toward it. "
+        "Do NOT just mention the category name or say 'think hard'. "
+        "Do NOT reveal the exact answer word-for-word. "
+        "Keep it to 1-2 short sentences. Be direct and helpful."
     ),
 )
 
@@ -35,24 +36,22 @@ friend_agent = Agent(
 async def ask_friend(question: dict) -> str:
     """
     Ask the AI 'friend' for advice on the current question.
-    Returns a short, fun hint string.
+    Returns a short, concrete hint string.
     """
     options = [question["correct"], question["wrong1"], question["wrong2"], question["wrong3"]]
     random.shuffle(options)
-    options_text = ", ".join(f'"{o}"' for o in options)
+    options_text = " / ".join(options)
 
     prompt = (
-        f'My friend is stuck on this trivia question:\n'
-        f'"{question["question"]}"\n'
-        f'The options are: {options_text}\n'
-        f'Give them a fun, helpful hint without revealing the answer directly!'
+        f'Question: {question["question"]}\n'
+        f'Options: {options_text}\n'
+        f'Give a specific clue or fact that helps identify the correct answer '
+        f'(without saying the answer outright).'
     )
 
     try:
         result = await friend_agent.run(prompt)
         return result.data
     except Exception as e:
-        return (
-            f"Hmm, that's a tough one! I'd think carefully about what you already know "
-            f"about {question.get('category', 'this topic')}. You've got this! 🤞"
-        )
+        print(f"[call_friend] error: {e}")
+        return "I'd focus on eliminating the obviously wrong ones first — trust your gut on the rest! 🤞"
